@@ -1,8 +1,100 @@
 use std::ops::{Index, IndexMut};
-use rand::Rng;
+use rand::{thread_rng, Rng};
 use rand::rngs::ThreadRng;
 use argh::FromArgs;
 use rand::distributions::{Distribution, Standard};
+
+
+enum AvoidanceStrategy {
+    Scared = 6,
+    Cautious = 4,
+    ImmediateOnly = 2,
+    Indifferent = 0
+}
+
+impl Distribution<AvoidanceStrategy> for Standard {
+    fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> AvoidanceStrategy {
+        match rng.gen_range(0..=3) {
+            0 => AvoidanceStrategy::Cautious,
+            1 => AvoidanceStrategy::ImmediateOnly,
+            2 => AvoidanceStrategy::Indifferent,
+            _ => AvoidanceStrategy::Scared
+        }
+    }
+}
+
+enum MovementStrategy {
+    Leader,
+    Follower,
+}
+
+impl Distribution<MovementStrategy> for Standard {
+    fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> MovementStrategy {
+        match rng.gen_range(0..=1) {
+            0 => MovementStrategy::Leader,
+            _ => MovementStrategy::Follower,
+        }
+    }
+}
+
+#[derive(PartialEq, Clone, Copy)]
+enum AggressionStrategy {
+    Balanced = 50,
+    Lean = 60,
+    Heavy = 70,
+    Extreme = 80
+}
+
+impl Distribution<AggressionStrategy> for Standard {
+    fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> AggressionStrategy {
+        match rng.gen_range(0..=3) {
+            0 => AggressionStrategy::Balanced,
+            1 => AggressionStrategy::Lean,
+            2 => AggressionStrategy::Heavy,
+            _ => AggressionStrategy::Extreme
+        }
+    }
+}
+
+
+#[derive(PartialEq, Clone, Copy)]
+enum PieceStrategy {
+    GetOnBoard,
+    FinishPiece
+}
+
+impl Distribution<PieceStrategy> for Standard {
+    fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> PieceStrategy {
+        match rng.gen_range(0..=1) {
+            0 => PieceStrategy::FinishPiece,
+            _ => PieceStrategy::GetOnBoard,
+        }
+    }
+}
+
+struct AI {
+    piece_strategy: PieceStrategy,
+    aggression_strategy: AggressionStrategy,
+    movement_strategy: MovementStrategy,
+    avoidance_strategy: AvoidanceStrategy
+}
+
+impl AI {
+    fn new_random() -> Self {
+        let piece_strategy : PieceStrategy = rand::random();
+        let aggression_strategy : AggressionStrategy = rand::random();
+        let movement_strategy : MovementStrategy = rand::random();
+        let avoidance_strategy : AvoidanceStrategy = rand::random();
+
+        AI {
+            piece_strategy,
+            aggression_strategy,
+            movement_strategy,
+            avoidance_strategy
+        }
+    }
+}
+
 
 #[derive(PartialEq, Clone, Copy)]
 enum Players {
@@ -79,13 +171,18 @@ impl Player {
         if self.pieces_in_game.is_empty() { false } else { true }
     }
 
-    fn move_piece_into_game(&mut self) {
+    fn check_if_pieces_available_to_play(&self) -> bool {
+        if self.pieces_not_in_game.is_empty() { false } else { true }
+    }
 
+    fn move_piece_into_game(&mut self) {
+        self.pieces_in_game.push(self.pieces_not_in_game.pop().unwrap());
     }
 }
 
 
 struct Piece {
+    start_index: u8,
     location: String,
     owner: Players
 }
@@ -93,9 +190,28 @@ struct Piece {
 impl Piece {
     fn new(location: String, owner: Players) -> Piece {
         Piece {
+            start_index: 0,
             location,
             owner
         }
+    }
+
+    fn add_to_board(&mut self) {
+        match self.owner {
+            Players::Red => self.start_index = 2,
+            Players::Green => self.start_index = 9,
+            Players::Yellow => self.start_index = 16,
+            Players::Blue => self.start_index = 23,
+        }
+    }
+
+    fn remove_from_board(&mut self) {
+        self.start_index = 0;
+        self.location = String::new()
+    }
+
+    fn update_location(&mut self, location: String) {
+        self.location = location;
     }
 }
 
@@ -172,27 +288,82 @@ impl Index<&'_ str> for Board {
         match s {
             "r1" => &self.r1,
             "r2" => &self.r2,
-            /// Do all these
+            "r3" => &self.r3,
+            "r4" => &self.r4,
+            "r5" => &self.r5,
+            "r6" => &self.r6,
+            "rg" => &self.rg,
+            "g1" => &self.g1,
+            "g2" => &self.g2,
+            "g3" => &self.g3,
+            "g4" => &self.g4,
+            "g5" => &self.g5,
+            "g6" => &self.g6,
+            "gy" => &self.gy,
+            "y1" => &self.y1,
+            "y2" => &self.y2,
+            "y3" => &self.y3,
+            "y4" => &self.y4,
+            "y5" => &self.y5,
+            "y6" => &self.y6,
+            "yb" => &self.yb,
+            "b1" => &self.b1,
+            "b2" => &self.b2,
+            "b3" => &self.b3,
+            "b4" => &self.b4,
+            "b5" => &self.b5,
+            "b6" => &self.b6,
+            "br" => &self.br,
             _ => panic!("unknown field: {}", s),
         }
     }
 }
 
-/// I don't think I need both, but maybe?
-impl IndexMut<&'_ str> for Board {
-    fn index_mut(&mut self, s: &str) -> &mut Option<Piece> {
+impl IndexMut<&'_ u8> for Board {
+    fn index_mut(&mut self, s: &u8) -> &mut Option<Piece> {
         match s {
-            "r1" => &mut self.r1,
-            "r2" => &mut self.r2,
-            /// do rest
+            0 => &mut self.r1,
+            1 => &mut self.r2,
+            2 => &mut self.r3,
+            3 => &mut self.r4,
+            4 => &mut self.r5,
+            5 => &mut self.r6,
+            6 => &mut self.rg,
+            7 => &mut self.g1,
+            8 => &mut self.g2,
+            9 => &mut self.g3,
+            10 => &mut self.g4,
+            11 => &mut self.g5,
+            12 => &mut self.g6,
+            13 => &mut self.gy,
+            14 => &mut self.y1,
+            15 => &mut self.y2,
+            16 => &mut self.y3,
+            17 => &mut self.y4,
+            18 => &mut self.y5,
+            19 => &mut self.y6,
+            20 => &mut self.yb,
+            21 => &mut self.b1,
+            22 => &mut self.b2,
+            23 => &mut self.b3,
+            24 => &mut self.b4,
+            25 => &mut self.b5,
+            26 => &mut self.b6,
+            27 => &mut self.br,
             _ => panic!("unknown field: {}", s),
         }
     }
 }
 
 impl Board {
-    fn update_board(&mut self, player: Players, roll: u8) {
-        /// needs to return a bool to let know a trouble occurs
+    fn update_board(&mut self, player: Players, roll: u8) -> bool {
+        /// TODO: All logic
+        false
+    }
+
+    fn new_board_position(&mut self, player: Player, roll: u8) -> String {
+        /// TODO: All logic
+        String::new()
     }
 }
 
@@ -222,15 +393,21 @@ impl GameState {
     fn can_roll_again(roll: u8) -> bool {
         if roll == 6 { true } else { false }
     }
+
+    fn player_turn(mut rng: ThreadRng, player: Player) {
+        let roll = Self::roll_dice(rng);
+
+        /// TODO: Logic on what to do
+
+        /// TODO: Check if pieces in play
+        /// TODO: Check if can exit
+        /// TODO: Exit or End
+        /// TODO: Can roll again
+    }
 }
 
-fn default_players() -> u8 {
-    3
-}
-
-fn default_quantity() -> u32 {
-    1
-}
+fn default_players() -> u8 { 3 }
+fn default_quantity() -> u32 { 1 }
 
 #[derive(FromArgs)]
 /// Exercise in Trouble
@@ -246,6 +423,7 @@ struct Args {
 
 fn main() {
     let args: Args = argh::from_env();
+    let rng: ThreadRng = thread_rng();
 
     let mut game_state = GameState::new(
         Board::default(),
