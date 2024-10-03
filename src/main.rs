@@ -5,6 +5,7 @@ use argh::FromArgs;
 use rand::distributions::{Distribution, Standard};
 
 
+#[derive(PartialEq, Clone, Copy)]
 enum AvoidanceStrategy {
     Scared = 6,
     Cautious = 4,
@@ -23,6 +24,7 @@ impl Distribution<AvoidanceStrategy> for Standard {
     }
 }
 
+#[derive(PartialEq, Clone, Copy)]
 enum MovementStrategy {
     Leader,
     Follower,
